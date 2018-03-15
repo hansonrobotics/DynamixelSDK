@@ -1,0 +1,123 @@
+#!/opt/hansonrobotics/py2env/bin/python
+# -*- coding: utf-8 -*-
+
+################################################################################
+# Copyright 2017 ROBOTIS CO., LTD.
+# Copyright 2018 Hanson Robotics LTD.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+################################################################################
+
+# Author: Ryu Woon Jung (Leon)
+
+#
+# *********     ping Example      *********
+#
+#
+# Available Dynamixel model on this example : All models using Protocol 1.0
+# This example is designed for using a Dynamixel MX-28, and an USB2DYNAMIXEL.
+# To use another Dynamixel model, such as X series, see their details in E-Manual(support.robotis.com) and edit below variables yourself.
+# Be sure that Dynamixel MX properties are already set as %% ID : 1 / Baudnum : 34 (Baudrate : 57600)
+#
+
+from __future__ import print_function
+import sys
+import argparse
+import time
+import dynamixel_functions as dynamixel                     # Uses Dynamixel SDK library
+from contextlib import contextmanager
+
+
+class DynamixelIO(object):
+
+    # Protocol version
+    PROTOCOL_VERSION            = 1                             # See which protocol version is used in the Dynamixel
+    COMM_SUCCESS                = 0                             # Communication Success result value
+    COMM_TX_FAIL                = -1001                         # Communication Tx Failed
+
+    @contextmanager
+    def open_port(self):
+        try:
+            if dynamixel.openPort(self.port_num):
+                print("Succeeded to open the port!")
+            else:
+                print("Failed to open the port!")
+                sys.exit(1)
+            yield
+        except:
+            raise
+        finally:
+            dynamixel.closePort(self.port_num)
+            print("Succeeded to close the port!")
+
+    def __init__(self, device, baudrate):
+        self.port_num = dynamixel.portHandler(device)
+        if dynamixel.setBaudRate(self.port_num, baudrate):
+            print("Succeeded to change the baudrate!")
+        else:
+            print("Failed to change the baudrate!")
+            sys.exit(1)
+
+    def ping(self, dxl_id):
+        # Initialize PacketHandler Structs
+        dynamixel.packetHandler()
+        dxl_comm_result = DynamixelIO.COMM_TX_FAIL                              # Communication result
+
+        # Try to ping the Dynamixel
+        # Get Dynamixel model number
+        dxl_model_number = dynamixel.pingGetModelNum(self.port_num, DynamixelIO.PROTOCOL_VERSION, dxl_id)
+        dxl_comm_result = dynamixel.getLastTxRxResult(self.port_num, DynamixelIO.PROTOCOL_VERSION)
+        dxl_error = dynamixel.getLastRxPacketError(self.port_num, DynamixelIO.PROTOCOL_VERSION)
+        print("[ID:%03d] " % dxl_id, end='')
+        if dxl_comm_result != DynamixelIO.COMM_SUCCESS:
+            print(dynamixel.getTxRxResult(DynamixelIO.PROTOCOL_VERSION, dxl_comm_result))
+        elif dxl_error != 0:
+            print(dynamixel.getRxPacketError(DynamixelIO.PROTOCOL_VERSION, dxl_error))
+        else:
+            print("ping Succeeded. Dynamixel model number : %d" % dxl_model_number)
+            return True
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-d', '--usb_device', dest='usb_device',
+        default='/dev/ttyUSB0',
+        help='Dynamiel Usb Device')
+    parser.add_argument(
+        'min_id', nargs='?',
+        default=0, type=int,
+        help='Minimum Motor ID')
+    parser.add_argument(
+        'max_id', nargs='?',
+        type=int,
+        help='Maximum Motor ID')
+    parser.add_argument(
+        '-r', '--baudrate', dest='baudrate',
+        default=1000000, type=int,
+        help='Baud Rate')
+
+    options = parser.parse_args()
+
+    dxlio = DynamixelIO(options.usb_device, options.baudrate)
+
+    assert options.min_id >=0, "Minimum motor id must be non-negative integer"
+    if options.max_id is None:
+       options.max_id = options.min_id
+
+    found_ids = []
+    with dxlio.open_port():
+        for i in xrange(options.min_id, options.max_id+1):
+            if dxlio.ping(i):
+                found_ids.append(i)
+    if not found_ids:
+        sys.exit(2)
